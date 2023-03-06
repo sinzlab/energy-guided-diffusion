@@ -1,0 +1,24 @@
+version: '3.4'
+x-build: &build
+  context: .
+  dockerfile: Dockerfile
+
+x-shared: &common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    - .:/src
+
+services:
+  base:
+    image: dime
+    <<: *common
+
+  python:
+    &python
+    image: dime
+    volumes:
+      - .:/src
+      - /root/.cache/:/root/.cache/
+    entrypoint: [ "python" ]
