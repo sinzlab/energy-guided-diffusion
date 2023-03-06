@@ -1,5 +1,7 @@
-# DIME: Diffusion Induced Most Exciting inputs
+# 🪙 DIME: Diffusion Induced Most Exciting inputs 
 Diffusion Induced Most Exciting inputs
+
+<img src="./assets/menis.png">
 
 *This repository is based on the [guided-diffusion](https://github.com/openai/guided-diffusion) repository.*
 
