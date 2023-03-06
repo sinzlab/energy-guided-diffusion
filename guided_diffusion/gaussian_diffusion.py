@@ -31,9 +31,6 @@ v4_multihead_attention_ensemble_model.cuda()
 v4_multihead_attention_ensemble_model_2.eval()
 v4_multihead_attention_ensemble_model_2.cuda()
 
-target = np.load('cute_monkey_60k_responses.npy')
-target = th.from_numpy(target).float().cuda()
-
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
     Get a pre-defined beta schedule for the given name.
