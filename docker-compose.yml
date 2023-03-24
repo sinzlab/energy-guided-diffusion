@@ -12,12 +12,12 @@ x-shared: &common
 
 services:
   base:
-    image: dime
+    image: egg
     <<: *common
 
   python:
     &python
-    image: dime
+    image: egg
     volumes:
       - .:/src
       - /root/.cache/:/root/.cache/

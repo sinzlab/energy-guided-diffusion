@@ -1,4 +1,4 @@
-# 🪙 DIME: Diffusion Induced Most Exciting inputs 
+# 🥚 EGG: Energy Guided Diffusion for optimizing neurally exciting images 
 Diffusion Induced Most Exciting inputs
 
 <img src="./assets/menis.png">

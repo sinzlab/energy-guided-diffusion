@@ -14,23 +14,6 @@ import torch as th
 from .nn import mean_flat
 from .losses import normal_kl, discretized_gaussian_log_likelihood
 
-from lib.nnvision.nnvision.models.trained_models.v4_data_driven import \
-    v4_multihead_attention_ensemble_model, v4_multihead_attention_ensemble_model_2
-
-from lib.nnvision.nnvision.models.trained_models.v4_task_driven import task_driven_ensemble_1
-
-import torch.nn.functional as F
-from torchvision import transforms
-
-task_driven_ensemble_1.eval()
-task_driven_ensemble_1.cuda()
-
-v4_multihead_attention_ensemble_model.eval()
-v4_multihead_attention_ensemble_model.cuda()
-
-v4_multihead_attention_ensemble_model_2.eval()
-v4_multihead_attention_ensemble_model_2.cuda()
-
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
     Get a pre-defined beta schedule for the given name.
@@ -435,7 +418,6 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
-
         out = self.p_mean_variance(
             model,
             x,
@@ -453,7 +435,12 @@ class GaussianDiffusion:
             out["mean"] = self.condition_mean(
                 cond_fn, out, x, t, model_kwargs=model_kwargs
             )
+
+        # clip the variance to avoid numerical issues
+        out["log_variance"] = th.clamp(out["log_variance"], max=5.0)
+
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(
@@ -565,8 +552,8 @@ class GaussianDiffusion:
             # l2norm(xa - xhat)
             # norm = th.norm((cond * mask) - (out["pred_xstart"] * mask))
 
-            # energy = energy_fn(out["pred_xstart"])
             energy = energy_fn(out["pred_xstart"])
+            # energy = energy_fn(out["pred_xstart"])
 
             # tar = F.interpolate(out["pred_xstart"].clone(), size=(100, 100), mode='bilinear', align_corners=False).mean(1, keepdim=True)
             # # tar = transforms.Normalize(
@@ -584,21 +571,24 @@ class GaussianDiffusion:
             # # print(tar.min(), tar.max())
             # response = task_driven_ensemble_1(tar, data_key="all_sessions", multiplex=True)[0]
             #
-            # # energy = -response[403] / 7.5 - response[995] / 14.3 - response[1017] / 5.1
+            # energy = -response[403] / 7.5 - response[995] / 14.3 - response[1017] / 5.1
             # # energy = -response[995]
             # # energy = -response[[67, 82, 88, 90, 99, 182, 227, 289, 315]] / th.Tensor([4.25946,4.30203,5.97408, 7.19563, 5.32363, 7.64743, 6.14755, 5.98937, 12.495]).cuda()
             # # energy = -response[[1123, 246, 789, 790, 831]] / th.Tensor([22.7326, 25.3089, 22.6014, 32.8712, 31.1545]).cuda()
             # # energy = energy.mean()
             # energy = th.mean((response[::49] - target[0, ::49])**2)
-            # print(-energy.item(), val_response[995].item())
+            # print(energy)
             # gradient w.r.t. z_t^b
-            print(energy.item())
 
             alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, img.shape)
 
-            norm_grad = th.autograd.grad(outputs=energy, inputs=img, retain_graph=True)[0]
-            out["sample"] = out["sample"] - (norm_grad / th.norm(norm_grad) * (1 - alpha_bar).sqrt() * energy_scale) #+ \
-            # out["sample"] = img - (norm_grad / th.norm(norm_grad) * energy_scale) #+ \
+            norm_grad = th.autograd.grad(outputs=energy['train'], inputs=img)[0]
+            # update = (norm_grad / th.norm(norm_grad) * (1 - alpha_bar).sqrt() * energy_scale)
+            update = (norm_grad / th.norm(norm_grad) * energy_scale)
+            out["sample"] = out["sample"] - update
+            # out["sample"] = img - update
+            # out["sample"] = out["sample"] - (norm_grad / th.norm(norm_grad) * energy_scale) #+ \
+
 
             # energy = -response[403] / 7.5 - response[995] / 14.3 - response[1017] / 5.1
 

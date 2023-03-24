@@ -29,7 +29,7 @@ model_config.update({
     'class_cond': False,
     'diffusion_steps': 1000,
     'rescale_timesteps': True,
-    'timestep_respacing': '200',  # Modify this value to decrease the number of timesteps.
+    'timestep_respacing': '1000',  # Modify this value to decrease the number of timesteps.
     'image_size': 256,
     'learn_sigma': True,
     'noise_schedule': 'linear',
@@ -52,8 +52,8 @@ energy_scale = 1.0
 seed = 0
 norm_constraint = 100
 
-style_w = 1
-content_w = 0
+style_w = 1_000
+content_w = 1
 
 
 def do_run(model, diffusion, target_image, energy_fn):
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
 
-    content_img = Image.open("./scripts/picasso.jpg").convert('RGB')
+    content_img = Image.open("./scripts/dancing.jpg").convert('RGB')
     content_img = np.array(content_img)
     content_img = torch.from_numpy(content_img).permute(2, 0, 1).unsqueeze(0) / 255.0
     content_img = content_img * 2 - 1
