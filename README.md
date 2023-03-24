@@ -66,3 +66,26 @@ samples = diffusion.p_sample_loop_progressive(
 )
 
 ```
+
+
+```python
+from egg.model import EGG
+
+model = EGG()
+
+def energy_fn(pred_x_0):
+    """
+    Energy function for the DIME algorithm. Defines the optimization objective.
+    
+    Args:
+        x (torch.Tensor): predicted sample at step t = 0. Shape: (B, C, H, W)
+    """
+    return torch.norm(pred_x_0)
+
+samples = model.sample(
+    energy_fn=energy_fn,
+    energy_scale=energy_scale,
+    num_samples=1,
+    device=device,
+)
+```
