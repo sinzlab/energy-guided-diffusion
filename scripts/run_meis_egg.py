@@ -1,4 +1,6 @@
-# Imports
+"""
+Run diffusion MEIs on a set of units.
+"""
 
 import gc
 import sys
@@ -8,7 +10,6 @@ from functools import partial
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.models as models
 import wandb
 from PIL import Image
 from torch import nn
@@ -20,29 +21,14 @@ from egg.diffusion import EGG
 from egg.models import models
 
 # experiment settings
-num_timesteps = 50
-energy_scale = [1, 2, 5, 10]  # 20
+num_timesteps = 100
+energy_scale = 5  # 20
 seeds = [0, 1, 2]
-norm_constraint = 25  # 50 # 25
-model_type = "v4_multihead_attention"  # 'task_driven' or 'v4_multihead_attention'
-progressive = True
-
-wandb.init(project="egg", entity="sinzlab", name=f"menis_{time.time()}")
-wandb.config.update(model_config)
-wandb.config.update(
-    dict(
-        energy_scale=energy_scale,
-        norm_constraint=norm_constraint,
-        model_type=model_type,
-        units=units,
-        progressive=progressive,
-    )
-)
+norm_constraint = 25  # 25
+model_type = "v4_multihead_attention"  #'task_driven' #or 'v4_multihead_attention'
 
 
-def do_run(
-    model, energy_fn, energy_scale=1, desc="progress", grayscale=False, seed=None
-):
+def do_run(model, energy_fn, desc="progress", grayscale=False, seed=None):
     if seed is not None:
         torch.manual_seed(seed)
 
@@ -56,25 +42,36 @@ def do_run(
 
     for j, sample in enumerate(samples):
         cur_t -= 1
-        if (j % 10 == 0 and progressive) or cur_t == -1:
+        if (j % 10 == 0) or cur_t == -1:
             print()
 
             energy = energy_fn(sample["pred_xstart"])
 
-            for k, image in enumerate(sample["sample"]):
-                filename = f"sample_{desc}_{j:05}.png"
+            for k, image in enumerate(sample["pred_xstart"]):
+                filename = f"{desc}_{0:05}.png"
                 if grayscale:
                     image = image.mean(0, keepdim=True)
-                image = image.add(1).div(2)
-                image = image.clamp(0, 1)
+
+                # normalize
+                tar = image / torch.norm(image) * norm_constraint * 256 / 100
 
                 tqdm.write(
                     f'step {j} | train energy: {energy["train"]:.4g} | val energy: {energy["val"]:.4g} | cross-val energy: {energy["cross-val"]:.4g}'
                 )
 
-    TF.to_pil_image(image).save(filename)
+            import matplotlib.pyplot as plt
 
-    return energy, image
+            plt.imshow(tar.cpu().detach().squeeze(), cmap="gray", vmin=-1.7, vmax=1.7)
+            plt.axis("off")
+            plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+            plt.margins(0, 0)
+            plt.gca().xaxis.set_major_locator(plt.NullLocator())
+            plt.gca().yaxis.set_major_locator(plt.NullLocator())
+            plt.savefig(
+                f"temp.png", transparent=True, bbox_inches="tight", pad_inches=0
+            )
+
+    return energy, "temp.png"
 
 
 if __name__ == "__main__":
@@ -84,6 +81,16 @@ if __name__ == "__main__":
 
     np.random.seed(42)
     units = np.random.choice(np.arange(len(available_units))[available_units], 100)
+
+    wandb.init(project="egg", entity="sinzlab", name=f"diffmeis_{time.time()}")
+    wandb.config.update(
+        dict(
+            energy_scale=energy_scale,
+            norm_constraint=norm_constraint,
+            model_type=model_type,
+            units=units,
+        )
+    )
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
@@ -113,35 +120,36 @@ if __name__ == "__main__":
 
     model = EGG(num_steps=num_timesteps)
 
-    for unit in units:
-        for seed in seeds:
-            train_scores = []
-            val_scores = []
-            cross_val_scores = []
-            for es in energy_scale:
-                score, image = do_run(
-                    model=model,
-                    energy_fn=partial(
-                        energy_fn, unit_idx=unit, models=models[model_type]
-                    ),
-                    desc=f"meni_{unit}_{es}",
-                    grayscale=True,
-                    energy_scale=es,
-                    seed=seed,
-                )
-                train_scores.append(score["train"].item())
-                val_scores.append(score["val"].item())
-                cross_val_scores.append(score["cross-val"].item())
+    train_scores = []
+    val_scores = []
+    cross_val_scores = []
+    for seed in seeds:
+        for unit_idx in units:
+            start = time.time()
+            score, image = do_run(
+                model=model,
+                energy_fn=partial(
+                    energy_fn, unit_idx=unit_idx, models=models[model_type]
+                ),
+                desc=f"diffMEI_{unit_idx}",
+                grayscale=True,
+                seed=seed,
+            )
+            end = time.time()
 
-                wandb.log(
-                    {
-                        "image": wandb.Image(image),
-                        **score,
-                        "unit_idx": unit,
-                        "energy_scale": es,
-                        "seed": seed,
-                    }
-                )
+            wandb.log(
+                {
+                    "image": wandb.Image(image),
+                    **score,
+                    "unit_idx": unit_idx,
+                    "seed": seed,
+                    "time": end - start,
+                }
+            )
+
+            train_scores.append(score["train"].item())
+            val_scores.append(score["val"].item())
+            cross_val_scores.append(score["cross-val"].item())
 
     print("Train:", train_scores)
     print("Val:", val_scores)

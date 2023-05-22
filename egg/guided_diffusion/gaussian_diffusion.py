@@ -502,7 +502,7 @@ class GaussianDiffusion:
         progress=True,
         energy_fn=None,
         energy_scale=1.0,
-        cond=None,
+        use_alpha_bar=False
     ):
         """
         Generate samples from the model and yield intermediate samples from
@@ -546,56 +546,16 @@ class GaussianDiffusion:
                 model_kwargs=model_kwargs,
             )
 
-            # mask = th.ones_like(img)
-            # mask[..., 64:192, 64:192] = 0
-
-            # l2norm(xa - xhat)
-            # norm = th.norm((cond * mask) - (out["pred_xstart"] * mask))
-
             energy = energy_fn(out["pred_xstart"])
-            # energy = energy_fn(out["pred_xstart"])
-
-            # tar = F.interpolate(out["pred_xstart"].clone(), size=(100, 100), mode='bilinear', align_corners=False).mean(1, keepdim=True)
-            # # tar = transforms.Normalize(
-            # #     [0.4876],
-            # #     [
-            # #         0.2756,
-            # #     ],
-            # # )(tar)
-            # tar = tar / th.norm(tar) * 100 # 60
-            # # tar = tar.clip(-1.7, 1.9)
-            # # response = v4_multihead_attention_ensemble_model(tar, data_key="all_sessions", multiplex=False)[0]
-            # # val_response = v4_multihead_attention_ensemble_model_2(tar, data_key="all_sessions", multiplex=False)[0]
-            # # response = task_driven_ensemble_1(tar, data_key="all_sessions", multiplex=False)[0]
-            # # val_response = task_driven_ensemble_1(tar, data_key="all_sessions", multiplex=False)[0]
-            # # print(tar.min(), tar.max())
-            # response = task_driven_ensemble_1(tar, data_key="all_sessions", multiplex=True)[0]
-            #
-            # energy = -response[403] / 7.5 - response[995] / 14.3 - response[1017] / 5.1
-            # # energy = -response[995]
-            # # energy = -response[[67, 82, 88, 90, 99, 182, 227, 289, 315]] / th.Tensor([4.25946,4.30203,5.97408, 7.19563, 5.32363, 7.64743, 6.14755, 5.98937, 12.495]).cuda()
-            # # energy = -response[[1123, 246, 789, 790, 831]] / th.Tensor([22.7326, 25.3089, 22.6014, 32.8712, 31.1545]).cuda()
-            # # energy = energy.mean()
-            # energy = th.mean((response[::49] - target[0, ::49])**2)
-            # print(energy)
-            # gradient w.r.t. z_t^b
-
-            alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, img.shape)
 
             norm_grad = th.autograd.grad(outputs=energy['train'], inputs=img)[0]
-            # update = (norm_grad / th.norm(norm_grad) * (1 - alpha_bar).sqrt() * energy_scale)
+
+            if use_alpha_bar:
+                alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, img.shape)
+                update = (norm_grad / th.norm(norm_grad) * (1 - alpha_bar).sqrt() * energy_scale)
+
             update = (norm_grad / th.norm(norm_grad) * energy_scale)
             out["sample"] = out["sample"] - update
-            # out["sample"] = img - update
-            # out["sample"] = out["sample"] - (norm_grad / th.norm(norm_grad) * energy_scale) #+ \
-
-
-            # energy = -response[403] / 7.5 - response[995] / 14.3 - response[1017] / 5.1
-
-            #                 self.q_sample(cond, t, th.randn(*shape, device=device)) * mask
-
-            # out["sample"] = out["sample"] * (1. - mask) + \
-            #                 self.q_sample(cond, t, th.randn(*shape, device=device)) * mask
 
             yield out
             img = out["sample"]

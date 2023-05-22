@@ -1,128 +1,112 @@
 # Imports
+import os
+import random
+import warnings
+
+import numpy as np
+from scipy import signal
+
+
+class GaussianBlur:
+    """Blur an image with a Gaussian window.
+    Arguments:
+        sigma (float or tuple): Standard deviation in y, x used for the gaussian blurring.
+        decay_factor (float): Compute sigma every iteration as `sigma + decay_factor *
+            (iteration - 1)`. Ignored if None.
+        truncate (float): Gaussian window is truncated after this number of standard
+            deviations to each side. Size of kernel = 8 * sigma + 1
+        pad_mode (string): Mode for the padding used for the blurring. Valid values are:
+            'constant', 'reflect' and 'replicate'
+        mei_only (True/False): for transparent mei, if True, no Gaussian blur for transparent channel:
+            default should be False (also for non transparent case)
+    """
+
+    def __init__(
+        self, sigma, decay_factor=None, truncate=4, pad_mode="reflect", mei_only=False
+    ):
+        self.sigma = sigma if isinstance(sigma, tuple) else (sigma,) * 2
+        self.decay_factor = decay_factor
+        self.truncate = truncate
+        self.pad_mode = pad_mode
+        self.mei_only = mei_only
+
+    def __call__(self, x, iteration=None):
+
+        # Update sigma if needed
+        if self.decay_factor is None:
+            sigma = self.sigma
+        else:
+            sigma = tuple(s + self.decay_factor * (iteration - 1) for s in self.sigma)
+
+        # Define 1-d kernels to use for blurring
+        y_halfsize = max(int(round(sigma[0] * self.truncate)), 1)
+        y_gaussian = signal.gaussian(2 * y_halfsize + 1, std=sigma[0])
+        x_halfsize = max(int(round(sigma[1] * self.truncate)), 1)
+        x_gaussian = signal.gaussian(2 * x_halfsize + 1, std=sigma[1])
+        y_gaussian = torch.as_tensor(y_gaussian, device=x.device, dtype=x.dtype)
+        x_gaussian = torch.as_tensor(x_gaussian, device=x.device, dtype=x.dtype)
+
+        # Blur
+        if self.mei_only:
+            num_channels = x.shape[1] - 1
+            padded_x = F.pad(
+                x[:, :-1, ...],
+                pad=(x_halfsize, x_halfsize, y_halfsize, y_halfsize),
+                mode=self.pad_mode,
+            )
+        else:  # also blur transparent channel
+            num_channels = x.shape[1]
+            padded_x = F.pad(
+                x,
+                pad=(x_halfsize, x_halfsize, y_halfsize, y_halfsize),
+                mode=self.pad_mode,
+            )
+        blurred_x = F.conv2d(
+            padded_x,
+            y_gaussian.repeat(num_channels, 1, 1)[..., None],
+            groups=num_channels,
+        )
+        blurred_x = F.conv2d(
+            blurred_x, x_gaussian.repeat(num_channels, 1, 1, 1), groups=num_channels
+        )
+        final_x = blurred_x / (y_gaussian.sum() * x_gaussian.sum())  # normalize
+        # print(final_x.shape)
+        if self.mei_only:
+            return torch.cat(
+                (final_x, x[:, -1, ...].view(x.shape[0], 1, x.shape[2], x.shape[3])),
+                dim=1,
+            )
+        else:
+            return final_x
+
+
+gaussian_blur = GaussianBlur(sigma=1)
 
 import gc
 import sys
+from functools import partial
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision.models as models
-from lib.nnvision.nnvision.models.trained_models.v4_data_driven import (
-    v4_multihead_attention_ensemble_model,
-    v4_multihead_attention_ensemble_model_2)
-from lib.nnvision.nnvision.models.trained_models.v4_task_driven import (
-    task_driven_ensemble_1, task_driven_ensemble_2)
+from PIL import Image
 from torch import nn
+from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
-task_driven_ensemble_1.eval()
-task_driven_ensemble_2.eval()
+from egg.models import models
 
-v4_multihead_attention_ensemble_model.eval()
-v4_multihead_attention_ensemble_model_2.eval()
+images = torch.Tensor(np.load("./data/75_monkey_test_imgs.npy"))
+target_l2 = torch.Tensor(np.load("./data/target_l2.npy"))
+image_idxs = np.arange(0, 75)
 
-task_driven_ensemble_1.cuda()
-task_driven_ensemble_2.cuda()
-
-v4_multihead_attention_ensemble_model.cuda()
-v4_multihead_attention_ensemble_model_2.cuda()
-
-from PIL import Image
-
-sys.path.append("./guided-diffusion")
-
-from functools import partial
-
-from torchvision import transforms
-
-from guided_diffusion.script_util import (create_model_and_diffusion,
-                                          model_and_diffusion_defaults)
-
-images = torch.Tensor(np.load("./scripts/75_monkey_test_imgs.npy"))
-
-# Model settings
-model_config = model_and_diffusion_defaults()
-model_config.update(
-    {
-        "attention_resolutions": "32, 16, 8",
-        "class_cond": False,
-        "diffusion_steps": 1000,
-        "rescale_timesteps": True,
-        "timestep_respacing": "1000",  # Modify this value to decrease the number of timesteps.
-        "image_size": 256,
-        "learn_sigma": True,
-        "noise_schedule": "linear",
-        "num_channels": 256,
-        "num_head_channels": 64,
-        "num_res_blocks": 2,
-        "resblock_updown": True,
-        "use_checkpoint": False,
-        "use_fp16": True,
-        "use_scale_shift_norm": True,
-    }
-)
-
-batch_size = 1
-tv_scale = 150  # Controls the smoothness of the final output.
-n_batches = 1
-init_image = None  # This can be an URL or Colab local path and must be in quotes.
-skip_timesteps = (
-    0  # This needs to be between approx. 200 and 500 when using an init image.
-)
-# Higher values make the output look more like the init.
-energy_scale = 2  # 20
-seed = 0
-norm_constraint = 100  # 25
 model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
-# units = [995, 403, 1017, 67, 82, 88, 90, 99, 182, 227, 289, 315, 1123, 246, 789, 790, 831, 1068, 115, 649, 710, 546, 569, 589, 6, 602]
-progressive = True
-image = 0
 
+import time
 
-def do_run(model, diffusion, energy_fn, desc="progress", grayscale=False):
-    if seed is not None:
-        torch.manual_seed(seed)
-
-    if model_config["timestep_respacing"].startswith("ddim"):
-        sample_fn = diffusion.ddim_sample_loop_progressive
-    else:
-        sample_fn = diffusion.p_sample_loop_progressive
-
-    cur_t = diffusion.num_timesteps - skip_timesteps - 1
-
-    samples = sample_fn(
-        model,
-        (batch_size, 3, model_config["image_size"], model_config["image_size"]),
-        clip_denoised=False,
-        model_kwargs={},
-        progress=True,
-        energy_fn=energy_fn,
-        energy_scale=energy_scale,
-    )
-
-    for j, sample in enumerate(samples):
-        cur_t -= 1
-        if (j % 10 == 0 and progressive) or cur_t == -1:
-            print()
-
-            energy = energy_fn(sample["pred_xstart"])
-
-            for k, image in enumerate(sample["pred_xstart"]):
-                filename = f"{desc}_{0:05}.png"
-                if grayscale:
-                    image = image.mean(0, keepdim=True)
-                image = image.add(1).div(2)
-
-                image = image.clamp(0, 1)
-                TF.to_pil_image(image).save(filename)
-
-                tqdm.write(
-                    f'step {j} | train energy: {energy["train"]:.4g} | val energy: {energy["val"]:.4g} | cross-val energy: {energy["cross-val"]:.4g}'
-                )
-
-    return energy
-
+import wandb
 
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -136,22 +120,12 @@ if __name__ == "__main__":
         norm=100,
         models=None,
     ):
-        tar = F.interpolate(
-            x, size=(100, 100), mode="bilinear", align_corners=False
-        ).mean(1, keepdim=True)
-        # normalize
-        # tar = transforms.Normalize(
-        #     [0.4876],
-        #     [
-        #         0.2756,
-        #     ],
-        # )(tar)
-
+        tar = x
         tar = tar / torch.norm(tar) * norm  # 60
         tar = tar.clip(-1.7, 1.9)
 
-        train_pred = models["train"](tar, data_key="all_sessions", multiplex=True)[0]
-        val_pred = models["val"](tar, data_key="all_sessions", multiplex=True)[0]
+        train_pred = models["train"](tar, data_key="all_sessions", multiplex=False)[0]
+        val_pred = models["val"](tar, data_key="all_sessions", multiplex=False)[0]
         cross_val_pred = models["cross-val"](
             tar, data_key="all_sessions", multiplex=False
         )[0]
@@ -166,109 +140,93 @@ if __name__ == "__main__":
             "cross-val": cross_val_energy,
         }
 
-    # model, diffusion = create_model_and_diffusion(**model_config)
-    # model.load_state_dict(torch.load('./models/256x256_diffusion_uncond.pt', map_location='cpu'))
-    # model.requires_grad_(True).eval().to(device)
-    # if model_config['use_fp16']:
-    #     model.convert_to_fp16()
-
-    gc.collect()
-
-    models = {
-        "task_driven": {
-            "train": task_driven_ensemble_1,
-            "val": task_driven_ensemble_2,
-            "cross-val": v4_multihead_attention_ensemble_model,
-        },
-        "v4_multihead_attention": {
-            "train": v4_multihead_attention_ensemble_model,
-            "val": v4_multihead_attention_ensemble_model_2,
-            "cross-val": task_driven_ensemble_1,
-        },
-        "cross": {
-            "train": task_driven_ensemble_1,
-            "val": task_driven_ensemble_2,
-            "cross-val": v4_multihead_attention_ensemble_model,
-        },
-    }
-
-    train_scores = []
-    val_scores = []
-    cross_val_scores = []
-    target_image = images[image].unsqueeze(0).unsqueeze(0).to(device)
-    target_response = models[model_type]["train"](
-        target_image, data_key="all_sessions", multiplex=True
-    )[0]
-    val_response = models[model_type]["val"](
-        target_image, data_key="all_sessions", multiplex=True
-    )[0]
-    cross_val_response = models[model_type]["cross-val"](
-        target_image, data_key="all_sessions", multiplex=False
-    )[0]
-
-    # optimize image to minimize energy using Adam
-    class ImageGen(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.image = torch.nn.Parameter(torch.randn(1, 3, 256, 256).to(device))
-
-        def forward(self):
-            return self.image
-
-    image_gen = ImageGen().to(device)
-    optimizer = torch.optim.Adam(image_gen.parameters(), lr=0.1)
-
-    pbar = tqdm(range(500))
-    for i in pbar:
-        image = image_gen()
-        image = F.interpolate(
-            image, size=(100, 100), mode="bilinear", align_corners=False
-        ).mean(1, keepdim=True)
-        image = image / torch.norm(image) * 100
-        # image = image.clip(-1.7, 1.9)
-
-        res = models[model_type]["train"](
-            image, data_key="all_sessions", multiplex=True
-        )[0]
-        val_res = models[model_type]["val"](
-            image, data_key="all_sessions", multiplex=True
-        )[0]
-        cross_val_res = models[model_type]["cross-val"](
-            image, data_key="all_sessions", multiplex=False
-        )[0]
-
-        loss = torch.mean((res - target_response) ** 2)
-        val_loss = torch.mean((val_res - val_response) ** 2)
-        cross_loss = torch.mean((cross_val_res - cross_val_response) ** 2)
-        loss.backward(retain_graph=True)
-        optimizer.step()
-        optimizer.zero_grad()
-
-        pbar.set_description(
-            f"loss: {loss.item()} | val_loss: {val_loss.item()} | cross_loss: {cross_loss.item()}"
+    wandb.init(
+        project="egg", entity="sinzlab", name=f"gd_reconstructions_{time.time()}"
+    )
+    wandb.config.update(model_config)
+    wandb.config.update(
+        dict(
+            energy_scale=energy_scale,
+            norm_constraint=norm_constraint,
+            model_type=model_type,
+            image_idxs=image_idxs,
+            progressive=progressive,
         )
+    )
 
-    # save image
-    image = image.detach().cpu().numpy()[0, 0]
-    image = (image - image.min()) / (image.max() - image.min())
-    image = (image * 255).astype(np.uint8)
-    image = Image.fromarray(image)
-    image.save(f"./{model_type}_{norm_constraint}.png")
+    for image_idx in image_idxs:
+        print(f"Image {image_idx}")
+        train_scores = []
+        val_scores = []
+        cross_val_scores = []
+        target_image = images[image_idx].unsqueeze(0).unsqueeze(0).to(device)
+        target_response = models[model_type]["train"](
+            target_image, data_key="all_sessions", multiplex=False
+        )[0]
+        val_response = models[model_type]["val"](
+            target_image, data_key="all_sessions", multiplex=False
+        )[0]
+        cross_val_response = models[model_type]["cross-val"](
+            target_image, data_key="all_sessions", multiplex=False
+        )[0]
 
-    # target = np.load('cute_monkey_60k_responses.npy')[0, ::49]
-    # target = torch.from_numpy(target).float().cuda()
+        # optimize image to minimize energy using Adam
+        class ImageGen(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.image = torch.nn.Parameter(torch.randn(1, 1, 100, 100).to(device))
 
-    # score = do_run(
-    #     model=model,
-    #     diffusion=diffusion,
-    #     energy_fn=partial(energy_fn, target_response=target_response, val_response=val_response, cross_val_response=cross_val_response, norm=norm_constraint, models=models[model_type]),
-    #     desc=f'progress_{image}',
-    #     grayscale=True
-    # )
-    # train_scores.append(score['train'].item())
-    # val_scores.append(score['val'].item())
-    # cross_val_scores.append(score['cross-val'].item())
+            def forward(self):
+                return self.image
 
-    # print('Train:', train_scores)
-    # print('Val:', val_scores)
-    # print('Cross-val:', cross_val_scores)
+        image_gen = ImageGen().to(device)
+        optimizer = torch.optim.AdamW(image_gen.parameters(), lr=0.05)
+
+        pbar = tqdm(range(5000))
+        for i in pbar:
+            image = image_gen()
+            image = gaussian_blur(image)
+            image = image / torch.norm(image) * target_image.norm()  # 60
+
+            res = models[model_type]["train"](
+                image, data_key="all_sessions", multiplex=False
+            )[0]
+            val_res = models[model_type]["val"](
+                image, data_key="all_sessions", multiplex=False
+            )[0]
+            cross_val_res = models[model_type]["cross-val"](
+                image, data_key="all_sessions", multiplex=False
+            )[0]
+
+            loss = torch.mean((res - target_response) ** 2)
+            val_loss = torch.mean((val_res - val_response) ** 2)
+            cross_loss = torch.mean((cross_val_res - cross_val_response) ** 2)
+            loss.backward(retain_graph=True)
+            optimizer.step()
+            optimizer.zero_grad()
+
+            pbar.set_description(
+                f"loss: {loss.item()} | val_loss: {val_loss.item()} | cross_loss: {cross_loss.item()}"
+            )
+
+            if loss < target_l2[image_idx]:
+                print("matched train performance")
+                break
+
+        # save image
+        image = image.detach().cpu().numpy()[0, 0]
+        image = (image - image.min()) / (image.max() - image.min())
+        image = (image * 255).astype(np.uint8)
+        image = Image.fromarray(image)
+        image.save(f"./{model_type}_{norm_constraint}.png")
+
+        wandb.log(
+            {
+                "image": wandb.Image(image),
+                "train": loss,
+                "val": val_loss,
+                "cross-val": cross_loss,
+                "unit_idx": image_idx,
+                "seed": seed,
+            }
+        )

@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from guided_diffusion.script_util import (create_model_and_diffusion,
+from egg.guided_diffusion.script_util import (create_model_and_diffusion,
                                           model_and_diffusion_defaults)
 
 class EGG(nn.Module):
-    def __init__(self):
+    def __init__(self, diffusion_artefact="./models/256x256_diffusion_uncond.pt", config=None, num_steps=50):
         # Model settings
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -15,7 +15,7 @@ class EGG(nn.Module):
                 "class_cond": False,
                 "diffusion_steps": 1000,
                 "rescale_timesteps": True,
-                "timestep_respacing": "50",  # Modify this value to decrease the number of timesteps.
+                "timestep_respacing": num_steps,
                 "image_size": 256,
                 "learn_sigma": True,
                 "noise_schedule": "linear",
@@ -29,9 +29,12 @@ class EGG(nn.Module):
             }
         )
 
+        if config is not None:
+            self.model_config.update(config)
+
         self.model, self.diffusion = create_model_and_diffusion(**self.model_config)
         self.model.load_state_dict(
-            torch.load("./models/256x256_diffusion_uncond.pt", map_location="cpu")
+            torch.load(diffusion_artefact, map_location="cpu")
         )
         self.model.requires_grad_(True).eval().to(device)
         if self.model_config["use_fp16"]:

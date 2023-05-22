@@ -1,104 +1,53 @@
 # Imports
-
 import gc
+import os
+import random
 import sys
+import time
+import warnings
+from functools import partial
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision.models as models
-from lib.nnvision.nnvision.models.trained_models.v4_data_driven import (
-    v4_multihead_attention_ensemble_model,
-    v4_multihead_attention_ensemble_model_2)
-from lib.nnvision.nnvision.models.trained_models.v4_task_driven import (
-    task_driven_ensemble_1, task_driven_ensemble_2)
+import wandb
+from guided_diffusion.script_util import (
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+)
+from PIL import Image
+from scipy import signal
 from torch import nn
+from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
-task_driven_ensemble_1.eval()
-task_driven_ensemble_2.eval()
+from egg.diffusion import EGG
+from egg.models import models
 
-v4_multihead_attention_ensemble_model.eval()
-v4_multihead_attention_ensemble_model_2.eval()
+images = torch.Tensor(np.load("./data/75_monkey_test_imgs.npy"))
+image_idxs = np.arange(0, 75)
 
-task_driven_ensemble_1.cuda()
-task_driven_ensemble_2.cuda()
-
-v4_multihead_attention_ensemble_model.cuda()
-v4_multihead_attention_ensemble_model_2.cuda()
-
-from PIL import Image
-
-sys.path.append("./guided-diffusion")
-
-from functools import partial
-
-from torchvision import transforms
-
-from guided_diffusion.script_util import (create_model_and_diffusion,
-                                          model_and_diffusion_defaults)
-
-images = torch.Tensor(np.load("./scripts/75_monkey_test_imgs.npy"))
-
-# Model settings
-model_config = model_and_diffusion_defaults()
-model_config.update(
-    {
-        "attention_resolutions": "32, 16, 8",
-        "class_cond": False,
-        "diffusion_steps": 1000,
-        "rescale_timesteps": True,
-        "timestep_respacing": "1000",  # Modify this value to decrease the number of timesteps.
-        "image_size": 256,
-        "learn_sigma": True,
-        "noise_schedule": "linear",
-        "num_channels": 256,
-        "num_head_channels": 64,
-        "num_res_blocks": 2,
-        "resblock_updown": True,
-        "use_checkpoint": False,
-        "use_fp16": True,
-        "use_scale_shift_norm": True,
-    }
-)
-
-batch_size = 1
-tv_scale = 150  # Controls the smoothness of the final output.
-n_batches = 1
-init_image = None  # This can be an URL or Colab local path and must be in quotes.
-skip_timesteps = (
-    0  # This needs to be between approx. 200 and 500 when using an init image.
-)
-# Higher values make the output look more like the init.
+# experiment settings
+num_timesteps = 1000
 energy_scale = 2  # 20
 seed = 0
-norm_constraint = 100  # 25
+norm_constraint = 60  # 25
 model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
-# units = [995, 403, 1017, 67, 82, 88, 90, 99, 182, 227, 289, 315, 1123, 246, 789, 790, 831, 1068, 115, 649, 710, 546, 569, 589, 6, 602]
 progressive = True
-image = 0
 
 
-def do_run(model, diffusion, energy_fn, desc="progress", grayscale=False):
+def do_run(model, energy_fn, desc="progress", grayscale=False):
     if seed is not None:
         torch.manual_seed(seed)
 
-    if model_config["timestep_respacing"].startswith("ddim"):
-        sample_fn = diffusion.ddim_sample_loop_progressive
-    else:
-        sample_fn = diffusion.p_sample_loop_progressive
+    cur_t = num_timesteps - 1
 
-    cur_t = diffusion.num_timesteps - skip_timesteps - 1
-
-    samples = sample_fn(
-        model,
-        (batch_size, 3, model_config["image_size"], model_config["image_size"]),
-        clip_denoised=False,
-        model_kwargs={},
-        progress=True,
+    samples = model.sample(
         energy_fn=energy_fn,
         energy_scale=energy_scale,
+        device=device,
     )
 
     for j, sample in enumerate(samples):
@@ -121,7 +70,7 @@ def do_run(model, diffusion, energy_fn, desc="progress", grayscale=False):
                     f'step {j} | train energy: {energy["train"]:.4g} | val energy: {energy["val"]:.4g} | cross-val energy: {energy["cross-val"]:.4g}'
                 )
 
-    return energy
+    return energy, image
 
 
 if __name__ == "__main__":
@@ -139,19 +88,12 @@ if __name__ == "__main__":
         tar = F.interpolate(
             x.clone(), size=(100, 100), mode="bilinear", align_corners=False
         ).mean(1, keepdim=True)
-        # normalize
-        # tar = transforms.Normalize(
-        #     [0.4876],
-        #     [
-        #         0.2756,
-        #     ],
-        # )(tar)
 
         tar = tar / torch.norm(tar) * norm  # 60
         tar = tar.clip(-1.7, 1.9)
 
-        train_pred = models["train"](tar, data_key="all_sessions", multiplex=True)[0]
-        val_pred = models["val"](tar, data_key="all_sessions", multiplex=True)[0]
+        train_pred = models["train"](tar, data_key="all_sessions", multiplex=False)[0]
+        val_pred = models["val"](tar, data_key="all_sessions", multiplex=False)[0]
         cross_val_pred = models["cross-val"](
             tar, data_key="all_sessions", multiplex=False
         )[0]
@@ -166,69 +108,58 @@ if __name__ == "__main__":
             "cross-val": cross_val_energy,
         }
 
-    model, diffusion = create_model_and_diffusion(**model_config)
-    model.load_state_dict(
-        torch.load("./models/256x256_diffusion_uncond.pt", map_location="cpu")
+    wandb.init(project="egg", entity="sinzlab", name=f"reconstructions_{time.time()}")
+    wandb.config.update(model_config)
+    wandb.config.update(
+        dict(
+            energy_scale=energy_scale,
+            norm_constraint=norm_constraint,
+            model_type=model_type,
+            image_idxs=image_idxs,
+            progressive=progressive,
+        )
     )
-    model.requires_grad_(True).eval().to(device)
-    if model_config["use_fp16"]:
-        model.convert_to_fp16()
 
-    gc.collect()
+    model = EGG(num_steps=num_timesteps)
 
-    models = {
-        "task_driven": {
-            "train": task_driven_ensemble_1,
-            "val": task_driven_ensemble_2,
-            "cross-val": v4_multihead_attention_ensemble_model,
-        },
-        "v4_multihead_attention": {
-            "train": v4_multihead_attention_ensemble_model,
-            "val": v4_multihead_attention_ensemble_model_2,
-            "cross-val": task_driven_ensemble_1,
-        },
-        "cross": {
-            "train": task_driven_ensemble_1,
-            "val": task_driven_ensemble_2,
-            "cross-val": v4_multihead_attention_ensemble_model,
-        },
-    }
+    for image_idx in image_idxs:
+        print(f"Image {image_idx}")
+        train_scores = []
+        val_scores = []
+        cross_val_scores = []
+        target_image = images[image_idx].unsqueeze(0).unsqueeze(0).to(device)
+        target_response = models[model_type]["train"](
+            target_image, data_key="all_sessions", multiplex=False
+        )[0]
+        val_response = models[model_type]["val"](
+            target_image, data_key="all_sessions", multiplex=False
+        )[0]
+        cross_val_response = models[model_type]["cross-val"](
+            target_image, data_key="all_sessions", multiplex=False
+        )[0]
 
-    train_scores = []
-    val_scores = []
-    cross_val_scores = []
-    target_image = images[image].unsqueeze(0).unsqueeze(0).to(device)
-    target_response = models[model_type]["train"](
-        target_image, data_key="all_sessions", multiplex=True
-    )[0]
-    val_response = models[model_type]["val"](
-        target_image, data_key="all_sessions", multiplex=True
-    )[0]
-    cross_val_response = models[model_type]["cross-val"](
-        target_image, data_key="all_sessions", multiplex=False
-    )[0]
+        score, image = do_run(
+            model=model,
+            energy_fn=partial(
+                energy_fn,
+                target_response=target_response,
+                val_response=val_response,
+                cross_val_response=cross_val_response,
+                norm=target_image.norm(),
+                models=models[model_type],
+            ),
+            desc=f"progress_{image_idx}",
+            grayscale=True,
+        )
 
-    # target = np.load('cute_monkey_60k_responses.npy')[0, ::49]
-    # target = torch.from_numpy(target).float().cuda()
+        wandb.log(
+            {"image": wandb.Image(image), **score, "unit_idx": image_idx, "seed": seed}
+        )
 
-    score = do_run(
-        model=model,
-        diffusion=diffusion,
-        energy_fn=partial(
-            energy_fn,
-            target_response=target_response,
-            val_response=val_response,
-            cross_val_response=cross_val_response,
-            norm=norm_constraint,
-            models=models[model_type],
-        ),
-        desc=f"progress_{image}",
-        grayscale=True,
-    )
-    train_scores.append(score["train"].item())
-    val_scores.append(score["val"].item())
-    cross_val_scores.append(score["cross-val"].item())
+        train_scores.append(score["train"].item())
+        val_scores.append(score["val"].item())
+        cross_val_scores.append(score["cross-val"].item())
 
-    print("Train:", train_scores)
-    print("Val:", val_scores)
-    print("Cross-val:", cross_val_scores)
+        print("Train:", train_scores)
+        print("Val:", val_scores)
+        print("Cross-val:", cross_val_scores)
