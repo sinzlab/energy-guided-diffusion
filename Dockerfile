@@ -5,9 +5,13 @@ ADD . /src
 
 WORKDIR /src
 
-RUN mkdir ./lib
-RUN git clone -b model_builder https://github.com/sinzlab/nnvision.git ./lib/nnvision
-
+RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir --upgrade keyrings.alt
 RUN pip install --no-cache-dir -e .
 RUN pip install --no-cache-dir -e /src/lib/nnvision
+RUN pip install --no-cache-dir wandb
+
+RUN git clone https://github.com/sinzlab/mei
+RUN python -m pip install --no-cache-dir -e /src/lib/mei
+
+WORKDIR /src

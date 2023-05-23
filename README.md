@@ -1,7 +1,11 @@
-# 🥚 EGG: Energy Guided Diffusion for optimizing neurally exciting images 
-Diffusion Induced Most Exciting inputs
+# 🥚 EGG: Energy Guided Diffusion for optimizing neurally exciting images
 
-<img src="./assets/menis.png">
+This is the official implementation of the paper "Energy Guided Diffusion for Generating Neurally Exciting Images".
+
+<p align="center"><img src="./assets/teaser.png" width="100%" alt="EGG diffusion generated neurally exciting images" /></p>
+
+> [**Energy Guided Diffusion for Generating Neurally Exciting Images**](https://www.biorxiv.org/content/10.1101/2023.05.18.541176v1), \
+> Pawel A. Pierzchlewicz, Konstantin F. Willeke, Arne F. Nix, Pavithra Elumalai, Kelli Restivo, Tori Shinn, Cate Nealley, Gabrielle Rodriguez, Saumil Patel, Katrin Franke, Andreas S. Tolias, and Fabian H. Sinz
 
 *This repository is based on the [guided-diffusion](https://github.com/openai/guided-diffusion) repository.*
 
