@@ -63,10 +63,45 @@ diffusion = EGG(
     diffusion_artefact='./models/256x256_diffusion_uncond.pt',
     num_steps=num_steps
 )
+
 samples = diffusion.sample(
     energy_fn=partial(energy_fn, unit_idx=0),
     energy_scale=energy_scale,
     num_samples=1,
     device=device,
 )
+```
+
+# Reproducing the experiments
+First the docker image needs to be built:
+```bash
+docker compose build base
+```
+This will setup the docker image with all the required packages.
+This will take a while, but only needs to be done once.
+
+The experiments can then be reproduced by running the scripts in the `scripts` folder.
+For example, to reproduce the experiments generating MEIs using EGG run:
+```bash
+docker compose run --rm python scripts/meis_egg.py
+```
+
+Finally, the analysis of the results and plots can be found in the `notebooks` folder.
+
+# Citation
+If you find this repository useful for your research, please cite the following paper:
+```
+@article{Pierzchlewicz2023,
+  title    = "Energy Guided Diffusion for Generating Neurally Exciting Images",
+  author   = "Pierzchlewicz, Pawe{\l} A and Willeke, Konstantin F and Nix, Arne
+              F and Elumalai, Pavithra and Restivo, Kelli and Shinn, Tori and
+              Nealley, Cate and Rodriguez, Gabrielle and Patel, Saumil and
+              Franke, Katrin and Tolias, Andreas S and Sinz, Fabian H",
+  abstract = ",
+  journal  = "bioRxiv",
+  pages    = "2023.05.18.541176",
+  month    =  may,
+  year     =  2023,
+  language = "en"
+}
 ```
