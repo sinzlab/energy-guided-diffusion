@@ -502,7 +502,8 @@ class GaussianDiffusion:
         progress=True,
         energy_fn=None,
         energy_scale=1.0,
-        use_alpha_bar=False
+        use_alpha_bar=False,
+        normalize_grad=True,
     ):
         """
         Generate samples from the model and yield intermediate samples from
@@ -550,11 +551,14 @@ class GaussianDiffusion:
 
             norm_grad = th.autograd.grad(outputs=energy['train'], inputs=img)[0]
 
+            if normalize_grad:
+                norm_grad = norm_grad / th.norm(norm_grad)
+
+            update = norm_grad * energy_scale
             if use_alpha_bar:
                 alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, img.shape)
-                update = (norm_grad / th.norm(norm_grad) * (1 - alpha_bar).sqrt() * energy_scale)
+                update = update * (1 - alpha_bar).sqrt()
 
-            update = (norm_grad / th.norm(norm_grad) * energy_scale)
             out["sample"] = out["sample"] - update
 
             yield out
