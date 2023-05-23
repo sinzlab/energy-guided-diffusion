@@ -9,18 +9,22 @@ x-shared: &common
     dockerfile: Dockerfile
   volumes:
     - .:/src
+    - ./lib:/src/lib
 
 services:
   base:
-    image: dime
+    image: egg
     <<: *common
+    volumes:
+      - .:/src
+      - ./lib:/src/lib
 
   python:
     &python
-    image: dime
+    image: egg
     volumes:
       - .:/src
-      - /root/.cache/:/root/.cache/
+#      - /root/.cache/:/root/.cache/
     entrypoint: [ "python" ]
     env_file:
       - .env

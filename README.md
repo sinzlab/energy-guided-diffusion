@@ -10,17 +10,17 @@ This is the official implementation of the paper "Energy Guided Diffusion for Ge
 *This repository is based on the [guided-diffusion](https://github.com/openai/guided-diffusion) repository.*
 
 # Installation
+
 ## Package Requirements
-You can install the required packages by running:
+Some packages need to be downloaded manually.
+Run the following commands to download the required packages:
 ```bash
-pip install -e .
+./download_requirements.sh
 ```
 
-To run neural experiments you need to install the [nnvision](https://github.com/sinzlab/nnvision.git) package.
+You can install the remaining packages by running:
 ```bash
-mkdir lib
-git clone -b model_builder https://github.com/sinzlab/nnvision.git ./lib/nnvision
-pip install -e ./lib/nnvision
+pip install -e .
 ```
 
 ## Pre-trained model weights

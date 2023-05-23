@@ -7,11 +7,9 @@ WORKDIR /src
 
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir --upgrade keyrings.alt
-RUN pip install --no-cache-dir -e .
-RUN pip install --no-cache-dir -e /src/lib/nnvision
 RUN pip install --no-cache-dir wandb
-
-RUN git clone https://github.com/sinzlab/mei
+RUN pip install --no-cache-dir -e /src/lib/nnvision
 RUN python -m pip install --no-cache-dir -e /src/lib/mei
+RUN pip install --no-cache-dir -e .
 
 WORKDIR /src
