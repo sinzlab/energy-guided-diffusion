@@ -66,9 +66,7 @@ diffusion = EGG(
 
 samples = diffusion.sample(
     energy_fn=partial(energy_fn, unit_idx=0),
-    energy_scale=energy_scale,
-    num_samples=1,
-    device=device,
+    energy_scale=energy_scale
 )
 ```
 

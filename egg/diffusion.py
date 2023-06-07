@@ -13,6 +13,7 @@ class EGG(nn.Module):
         config=None,
         num_steps=50,
     ):
+        super().__init__()
         # Model settings
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -23,7 +24,7 @@ class EGG(nn.Module):
                 "class_cond": False,
                 "diffusion_steps": 1000,
                 "rescale_timesteps": True,
-                "timestep_respacing": num_steps,
+                "timestep_respacing": f"{num_steps}",
                 "image_size": 256,
                 "learn_sigma": True,
                 "noise_schedule": "linear",

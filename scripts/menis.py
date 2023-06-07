@@ -50,8 +50,7 @@ def do_run(
 
     samples = model.sample(
         energy_fn=energy_fn,
-        energy_scale=energy_scale,
-        device=device,
+        energy_scale=energy_scale
     )
 
     for j, sample in enumerate(samples):

@@ -25,7 +25,7 @@ num_timesteps = 100
 energy_scale = 5  # 20
 seeds = [0, 1, 2]
 norm_constraint = 25  # 25
-model_type = "v4_multihead_attention"  #'task_driven' #or 'v4_multihead_attention'
+model_type = "color"  #'task_driven' #or 'v4_multihead_attention'
 
 
 def do_run(model, energy_fn, desc="progress", grayscale=False, seed=None):
@@ -36,8 +36,7 @@ def do_run(model, energy_fn, desc="progress", grayscale=False, seed=None):
 
     samples = model.sample(
         energy_fn=energy_fn,
-        energy_scale=energy_scale,
-        device=device,
+        energy_scale=energy_scale
     )
 
     for j, sample in enumerate(samples):
