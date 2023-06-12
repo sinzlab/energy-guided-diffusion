@@ -20,6 +20,8 @@ Run the following commands to download the required packages:
 
 You can install the remaining packages by running:
 ```bash
+pip install -e ./lib/nnvision
+pip install -e ./lib/mei
 pip install -e .
 ```
 
@@ -56,7 +58,11 @@ def energy_fn(pred_x_0, unit_idx=0):
     :param unit_idx: the index of the unit to optimize
     :return: the neural of the predicted image for the given unit
     """
-    return dict(train=models['task_driven']['train'](pred_x_0)[..., unit_idx])
+    x = F.interpolate(
+        pred_x_0.clone(), size=(100, 100), mode="bilinear", align_corners=False
+    ).mean(1, keepdim=True) # resize to 100x100 and convert to grayscale
+    
+    return dict(train=models['task_driven']['train'](x)[..., unit_idx])
 
 
 diffusion = EGG(
