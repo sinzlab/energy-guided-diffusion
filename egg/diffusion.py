@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import os
+
 from egg.guided_diffusion.script_util import (
     create_model_and_diffusion,
     model_and_diffusion_defaults,
@@ -42,6 +44,15 @@ class EGG(nn.Module):
             self.model_config.update(config)
 
         self.model, self.diffusion = create_model_and_diffusion(**self.model_config)
+
+        # check if diffusion_artefact is a path to a model or a model itself
+        if not os.path.exists(diffusion_artefact):
+            import urllib.request
+            url = "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt"
+            destination = "./models/256x256_diffusion_uncond.pt"
+
+            urllib.request.urlretrieve(url, destination)
+
         self.model.load_state_dict(torch.load(diffusion_artefact, map_location="cpu"))
         self.model.requires_grad_(True).eval().to(device)
         if self.model_config["use_fp16"]:
@@ -54,7 +65,7 @@ class EGG(nn.Module):
         num_samples=1,
         *,
         use_alpha_bar=False,
-        normalize_grad=True
+        normalize_grad=True,
     ):
         """
         This function samples from a diffusion model using a given energy function and other optional parameters.
