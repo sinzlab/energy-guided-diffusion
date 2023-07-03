@@ -1,7 +1,8 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 
 setup(
     name="egg",
-    py_modules=["egg"],
+    version="0.0.0",
     install_requires=["blobfile>=1.0.5", "torch", "tqdm"],
+    packages=find_packages(exclude=[]),
 )
