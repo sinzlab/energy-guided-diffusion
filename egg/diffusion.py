@@ -48,13 +48,20 @@ class EGG(nn.Module):
         # check if diffusion_artefact is a path to a model or a model itself
         if not os.path.exists(diffusion_artefact):
             # download the model
-            print("Downloading the pretrained diffusion model")
-            import urllib.request
+            import requests
+            from tqdm import tqdm
             url = "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt"
             destination = "./models/256x256_diffusion_uncond.pt"
 
-            urllib.request.urlretrieve(url, destination)
-            print("Done!")
+            response = requests.get(url, stream=True)
+            total_size = int(response.headers.get('content-length', 0))
+
+            print("Downloading the pretrained diffusion model")
+            with open(destination, 'wb') as file:
+                with tqdm(total=total_size, unit='B', unit_scale=True) as progress_bar:
+                    for data in response.iter_content(1024):
+                        file.write(data)
+                        progress_bar.update(len(data))
 
         self.model.load_state_dict(torch.load(diffusion_artefact, map_location="cpu"))
         self.model.requires_grad_(True).eval().to(device)
