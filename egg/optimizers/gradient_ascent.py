@@ -9,18 +9,20 @@ from torch.nn import Module
 
 
 class SingleUnitModel(nn.Module):
-    def __init__(self, model, unit_idx):
+    def __init__(self, model, unit_idx, data_key):
         super().__init__()
         self.model = model
         self.unit_idx = unit_idx
+        self.data_key = data_key
 
     def forward(self, *args, **kwargs):
-        return self.model(*args, data_key="all_sessions", **kwargs)[..., self.unit_idx]
+        return self.model(*args, data_key=self.data_key, **kwargs)[..., self.unit_idx]
 
 
 def gradient_ascent(
     model: Module,
     config: Dict,
+    data_key: str,
     seed: int,
     shape: Tuple[int, ...] = (1, 1, 100, 100),
     unit: Optional[int] = None,
@@ -89,7 +91,7 @@ def gradient_ascent(
         The MEI, the final evaluation as a single float and the log of the tracker.
     """
     if unit is not None:
-        model = SingleUnitModel(model, unit)
+        model = SingleUnitModel(model, unit, data_key)
 
     for component_name, component_config in config.items():
         if component_name in (
