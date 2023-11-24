@@ -11,8 +11,9 @@ import math
 import numpy as np
 import torch as th
 
+from .losses import discretized_gaussian_log_likelihood, normal_kl
 from .nn import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood
+
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
@@ -499,11 +500,13 @@ class GaussianDiffusion:
         cond_fn=None,
         model_kwargs=None,
         device=None,
-        progress=True,
+        progress=False,
         energy_fn=None,
         energy_scale=1.0,
         use_alpha_bar=False,
         normalize_grad=True,
+        inpaint=None,
+        inpaint_mask=None,
     ):
         """
         Generate samples from the model and yield intermediate samples from
@@ -513,9 +516,6 @@ class GaussianDiffusion:
         Returns a generator over dicts, where each dict is the return value of
         p_sample().
         """
-        if energy_fn is None:
-            raise ValueError("energy_fn must be specified for progressive sampling")
-
         if device is None:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
@@ -534,8 +534,9 @@ class GaussianDiffusion:
         for i in indices:
             t = th.tensor([i] * shape[0], device=device)
 
-            #re - instantiate requires_grad for backpropagation
+            # re - instantiate requires_grad for backpropagation
             img = img.requires_grad_()
+
 
             out = self.p_sample(
                 model,
@@ -547,19 +548,30 @@ class GaussianDiffusion:
                 model_kwargs=model_kwargs,
             )
 
-            energy = energy_fn(out["pred_xstart"])
+            if inpaint is not None and inpaint_mask is not None:
+                if t == 0:
+                    _t = t
+                else:
+                    _t = t - 1
 
-            norm_grad = th.autograd.grad(outputs=energy['train'], inputs=img)[0]
+                energy = th.norm(inpaint - out["pred_xstart"] * inpaint_mask)
+                grad = th.autograd.grad(outputs=energy, inputs=img)[0]
+                out["sample"] = out["sample"] - grad * energy_scale
+            else:
+                energy = energy_fn(out["pred_xstart"])
 
-            if normalize_grad:
-                norm_grad = norm_grad / th.norm(norm_grad)
+                norm_grad = th.autograd.grad(outputs=energy["train"], inputs=img)[0]
 
-            update = norm_grad * energy_scale
-            if use_alpha_bar:
-                alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, img.shape)
-                update = update * (1 - alpha_bar).sqrt()
+                if normalize_grad:
+                    norm_grad = norm_grad / (th.norm(norm_grad) + 1e-6)
 
-            out["sample"] = out["sample"] - update
+                update = norm_grad * energy_scale
+
+                if use_alpha_bar:
+                    alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, img.shape)
+                    update = update * (1 - alpha_bar).sqrt()
+
+                out["sample"] = out["sample"] - update
 
             yield out
             img = out["sample"]
@@ -608,18 +620,12 @@ class GaussianDiffusion:
         noise = th.randn_like(x)
         mean_pred = (
             out["pred_xstart"] * th.sqrt(alpha_bar_prev)
-            + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
+            + th.sqrt(1 - alpha_bar_prev - sigma**2) * eps
         )
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         sample = mean_pred + nonzero_mask * sigma * noise
-
-
-
-        # if cond_fn:
-            # sample = cond_fn(sample, t)
-        # out["pred_xstart"] = cond_fn(out["pred_xstart"], t, x_start=True)
 
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
@@ -744,13 +750,14 @@ class GaussianDiffusion:
                     eta=eta,
                 )
 
-
                 # mask of 128 x 128 in the center of the image which is 256 x 256
                 mask = th.zeros_like(img)
                 mask[..., 64:192, 64:192] = 1
 
-                out["sample"] = out["sample"] * (1. - mask) + \
-                                self.q_sample(cond, t, th.randn(*shape, device=device)) * mask
+                out["sample"] = (
+                    out["sample"] * (1.0 - mask)
+                    + self.q_sample(cond, t, th.randn(*shape, device=device)) * mask
+                )
 
                 yield out
                 img = out["sample"]

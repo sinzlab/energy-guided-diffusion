@@ -1,10 +1,10 @@
 import math
 import random
 
-from PIL import Image
 import blobfile as bf
-from mpi4py import MPI
 import numpy as np
+from mpi4py import MPI
+from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
 
