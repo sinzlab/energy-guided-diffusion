@@ -4,5 +4,6 @@ classify_image_graph_def.pb
 
 data/
 models/
+lib/
 
 *.npy

@@ -1,26 +1,35 @@
 # Imports
 import time
+
 from functools import partial
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
 import wandb
+
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
 from egg.diffusion import EGG
 from egg.models import models
+import pickle
 
-images = torch.Tensor(np.load("./data/75_monkey_test_imgs.npy"))
-image_idxs = np.arange(0, 75)
+with open("./data/test_75_response_noisy.pkl", "rb") as f:
+    data = pickle.load(f)
+
+    images = torch.Tensor(data["images"])
+    responses = torch.Tensor(data["responses"])
+
+    image_idxs = np.arange(0, 75)
 
 # experiment settings
 num_timesteps = 1000
-energy_scale = 2  # 20
+energy_scale = 1  # 20
 seed = 0
 norm_constraint = 60  # 25
-model_type = "v4_multihead_attention"  # 'task_driven' or 'v4_multihead_attention'
+model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
 progressive = True
 
 
@@ -40,6 +49,7 @@ def do_run(model, energy_fn, desc="progress", grayscale=False):
             energy = energy_fn(sample["pred_xstart"])
 
             for k, image in enumerate(sample["pred_xstart"]):
+                image = image.detach().cpu()
                 filename = f"{desc}_{0:05}.png"
                 if grayscale:
                     image = image.mean(0, keepdim=True)
@@ -71,7 +81,7 @@ if __name__ == "__main__":
             x.clone(), size=(100, 100), mode="bilinear", align_corners=False
         ).mean(1, keepdim=True)
 
-        tar = tar / torch.norm(tar) * norm  # 60
+        tar = tar / torch.norm(tar) * 60  # 60
         tar = tar.clip(-1.7, 1.9)
 
         train_pred = models["train"](tar, data_key="all_sessions", multiplex=False)[0]
@@ -90,8 +100,7 @@ if __name__ == "__main__":
             "cross-val": cross_val_energy,
         }
 
-    wandb.init(project="egg", entity="sinzlab", name=f"reconstructions_{time.time()}")
-    # wandb.config.update(model_config)
+    wandb.init(project="egg", entity="sinzlab", name=f"real_reconstructions_{time.time()}")
     wandb.config.update(
         dict(
             energy_scale=energy_scale,
@@ -109,16 +118,10 @@ if __name__ == "__main__":
         train_scores = []
         val_scores = []
         cross_val_scores = []
-        target_image = images[image_idx].unsqueeze(0).unsqueeze(0).to(device)
-        target_response = models[model_type]["train"](
-            x=target_image, data_key="all_sessions", multiplex=False
-        )[0]
-        val_response = models[model_type]["val"](
-            x=target_image, data_key="all_sessions", multiplex=False
-        )[0]
-        cross_val_response = models[model_type]["cross-val"](
-            x=target_image, data_key="all_sessions", multiplex=False
-        )[0]
+        # target_image = images[image_idx].unsqueeze(0).unsqueeze(0).to(device)
+        target_response = torch.Tensor(responses[image_idx]).to(device)
+        val_response = torch.Tensor(responses[image_idx]).to(device)
+        cross_val_response = torch.Tensor(responses[image_idx]).to(device)
 
         score, image = do_run(
             model=model,
@@ -127,7 +130,7 @@ if __name__ == "__main__":
                 target_response=target_response,
                 val_response=val_response,
                 cross_val_response=cross_val_response,
-                norm=target_image.norm(),
+                norm=images[image_idx].norm(),
                 models=models[model_type],
             ),
             desc=f"progress_{image_idx}",

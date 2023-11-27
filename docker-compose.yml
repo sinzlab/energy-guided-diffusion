@@ -28,3 +28,14 @@ services:
     entrypoint: [ "python" ]
     env_file:
       - .env
+
+  notebook:
+    image: egg
+    <<: *common
+    volumes:
+      - .:/src
+      - /var/sinz-shared:/data
+    ports:
+      - "8888:8888"
+    env_file:
+      - .env

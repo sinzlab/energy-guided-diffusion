@@ -21,20 +21,19 @@ from egg.models import models
 
 # experiment settings
 num_timesteps = 50
-energy_scale = [1, 2, 5, 10]  # 20
-seeds = [0, 1, 2]
-norm_constraint = 25  # 50 # 25
-model_type = "v4_multihead_attention"  # 'task_driven' or 'v4_multihead_attention'
+energy_scale = [1, 5, 10]  # 20
+seeds = [0]
+norm_constraint = 50  # 50 # 25
+model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
 progressive = True
 
 wandb.init(project="egg", entity="sinzlab", name=f"menis_{time.time()}")
-wandb.config.update(model_config)
+# wandb.config.update(model_config)
 wandb.config.update(
     dict(
         energy_scale=energy_scale,
         norm_constraint=norm_constraint,
         model_type=model_type,
-        units=units,
         progressive=progressive,
     )
 )
@@ -48,10 +47,7 @@ def do_run(
 
     cur_t = num_timesteps - 1
 
-    samples = model.sample(
-        energy_fn=energy_fn,
-        energy_scale=energy_scale
-    )
+    samples = model.sample(energy_fn=energy_fn, energy_scale=energy_scale)
 
     for j, sample in enumerate(samples):
         cur_t -= 1
@@ -82,7 +78,7 @@ if __name__ == "__main__":
     available_units = (data_driven_corrs > 0.5) * (units > 0.5)
 
     np.random.seed(42)
-    units = np.random.choice(np.arange(len(available_units))[available_units], 100)
+    units = np.random.choice(np.arange(len(available_units))[available_units], 100)[:1]
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
@@ -124,13 +120,15 @@ if __name__ == "__main__":
                         energy_fn, unit_idx=unit, models=models[model_type]
                     ),
                     desc=f"meni_{unit}_{es}",
-                    grayscale=True,
+                    grayscale=False,
                     energy_scale=es,
                     seed=seed,
                 )
                 train_scores.append(score["train"].item())
                 val_scores.append(score["val"].item())
                 cross_val_scores.append(score["cross-val"].item())
+
+                image = image.detach().cpu().permute(1, 2, 0).numpy()
 
                 wandb.log(
                     {
@@ -141,6 +139,8 @@ if __name__ == "__main__":
                         "seed": seed,
                     }
                 )
+
+                torch.cuda.empty_cache()
 
     print("Train:", train_scores)
     print("Val:", val_scores)

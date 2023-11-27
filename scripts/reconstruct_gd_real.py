@@ -98,11 +98,21 @@ from tqdm import tqdm
 
 from egg.models import models
 
-images = torch.Tensor(np.load("./data/75_monkey_test_imgs.npy"))
-target_l2 = torch.Tensor(np.load("./data/dd_recon_loss.npy"))
+import pickle
+
+with open("./data/test_75_response_noisy.pkl", "rb") as f:
+    data = pickle.load(f)
+
+    images = torch.Tensor(data["images"])
+    responses = torch.Tensor(data["responses"])
+
+    # image_idxs = np.arange(0, 75)
+
+target_l2 = torch.Tensor(np.load("./data/targets_real.npy"))
+# target_l2 = torch.Tensor(np.load("./data/target_l2.npy", allow_pickle=True))
 image_idxs = np.arange(0, 75)
 
-model_type = "v4_multihead_attention"  # 'task_driven' or 'v4_multihead_attention'
+model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
 
 import time
 
@@ -143,14 +153,10 @@ if __name__ == "__main__":
     wandb.init(
         project="egg", entity="sinzlab", name=f"gd_reconstructions_{time.time()}"
     )
-    # wandb.config.update(model_config)
     wandb.config.update(
         dict(
-            # energy_scale=energy_scale,
-            # norm_constraint=norm_constraint,
             model_type=model_type,
             image_idxs=image_idxs,
-            # progressive=progressive,
         )
     )
 
@@ -159,16 +165,11 @@ if __name__ == "__main__":
         train_scores = []
         val_scores = []
         cross_val_scores = []
-        target_image = images[image_idx].unsqueeze(0).unsqueeze(0).to(device)
-        target_response = models[model_type]["train"](
-            target_image, data_key="all_sessions", multiplex=False
-        )[0]
-        val_response = models[model_type]["val"](
-            target_image, data_key="all_sessions", multiplex=False
-        )[0]
-        cross_val_response = models[model_type]["cross-val"](
-            target_image, data_key="all_sessions", multiplex=False
-        )[0]
+
+        target_response = torch.Tensor(responses[image_idx]).to(device)
+        val_response = torch.Tensor(responses[image_idx]).to(device)
+        cross_val_response = torch.Tensor(responses[image_idx]).to(device)
+        target_image = images[image_idx].to(device)
 
         # optimize image to minimize energy using Adam
         class ImageGen(torch.nn.Module):
@@ -186,7 +187,7 @@ if __name__ == "__main__":
         for i in pbar:
             image = image_gen()
             image = gaussian_blur(image)
-            image = image / torch.norm(image) * 60# target_image.norm()  # 60
+            image = image / torch.norm(image) * 60 #target_image.norm()  # 60
 
             res = models[model_type]["train"](
                 image, data_key="all_sessions", multiplex=False
@@ -218,7 +219,6 @@ if __name__ == "__main__":
         image = (image - image.min()) / (image.max() - image.min())
         image = (image * 255).astype(np.uint8)
         image = Image.fromarray(image)
-        image.save(f"./{model_type}.png")
 
         wandb.log(
             {

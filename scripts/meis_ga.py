@@ -190,7 +190,7 @@ def gradient_ascent(
 
 
 data_driven_corrs = np.load("./data/data_driven_corr.npy")
-units = np.load("./scripts/pretrained_resnet_unit_correlations.npy")
+units = np.load("./data/pretrained_resnet_unit_correlations.npy")
 available_units = (data_driven_corrs > 0.5) * (units > 0.5)
 
 np.random.seed(42)
@@ -198,7 +198,7 @@ units = np.random.choice(np.arange(len(available_units))[available_units], 100)
 
 config = dict(
     initial={"path": "mei.initial.RandomNormal"},
-    optimizer={"path": "torch.optim.SGD", "kwargs": {"lr": 10}},
+    optimizer={"path": "torch.optim.AdamW", "kwargs": {"lr": 10}},
     precondition={"path": "mei.legacy.ops.GaussianBlur", "kwargs": {"sigma": 1}},
     postprocessing={"path": "mei.legacy.ops.ChangeNorm", "kwargs": {"norm": 25}},
     transparency_weight=0.0,
@@ -231,8 +231,6 @@ if __name__ == "__main__":
             end = time.time()
 
             mei = mei.cuda()
-
-            print(mei.norm())
 
             score = {}
             score["train"] = models[model_type]["train"](mei, data_key="all_sessions")[
