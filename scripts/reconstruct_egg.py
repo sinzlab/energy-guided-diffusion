@@ -1,25 +1,11 @@
 # Imports
-import gc
-import os
-import random
-import sys
 import time
-import warnings
 from functools import partial
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.models as models
 import wandb
-from guided_diffusion.script_util import (
-    create_model_and_diffusion,
-    model_and_diffusion_defaults,
-)
-from PIL import Image
-from scipy import signal
-from torch import nn
-from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
@@ -34,7 +20,7 @@ num_timesteps = 1000
 energy_scale = 2  # 20
 seed = 0
 norm_constraint = 60  # 25
-model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
+model_type = "v4_multihead_attention"  # 'task_driven' or 'v4_multihead_attention'
 progressive = True
 
 
@@ -44,10 +30,7 @@ def do_run(model, energy_fn, desc="progress", grayscale=False):
 
     cur_t = num_timesteps - 1
 
-    samples = model.sample(
-        energy_fn=energy_fn,
-        energy_scale=energy_scale
-    )
+    samples = model.sample(energy_fn=energy_fn, energy_scale=energy_scale)
 
     for j, sample in enumerate(samples):
         cur_t -= 1
@@ -108,7 +91,7 @@ if __name__ == "__main__":
         }
 
     wandb.init(project="egg", entity="sinzlab", name=f"reconstructions_{time.time()}")
-    wandb.config.update(model_config)
+    # wandb.config.update(model_config)
     wandb.config.update(
         dict(
             energy_scale=energy_scale,
@@ -128,13 +111,13 @@ if __name__ == "__main__":
         cross_val_scores = []
         target_image = images[image_idx].unsqueeze(0).unsqueeze(0).to(device)
         target_response = models[model_type]["train"](
-            target_image, data_key="all_sessions", multiplex=False
+            x=target_image, data_key="all_sessions", multiplex=False
         )[0]
         val_response = models[model_type]["val"](
-            target_image, data_key="all_sessions", multiplex=False
+            x=target_image, data_key="all_sessions", multiplex=False
         )[0]
         cross_val_response = models[model_type]["cross-val"](
-            target_image, data_key="all_sessions", multiplex=False
+            x=target_image, data_key="all_sessions", multiplex=False
         )[0]
 
         score, image = do_run(

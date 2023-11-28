@@ -3,7 +3,7 @@ import inspect
 
 from . import gaussian_diffusion as gd
 from .respace import SpacedDiffusion, space_timesteps
-from .unet import SuperResModel, UNetModel, EncoderUNetModel
+from .unet import EncoderUNetModel, SuperResModel, UNetModel
 
 NUM_CLASSES = 1000
 
@@ -167,7 +167,7 @@ def create_model(
         image_size=image_size,
         in_channels=3,
         model_channels=num_channels,
-        out_channels=6,#(3 if not learn_sigma else 6),
+        out_channels=6,  # (3 if not learn_sigma else 6),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_ds),
         dropout=dropout,

@@ -1,11 +1,13 @@
 # 🥚 EGG: Energy Guided Diffusion for optimizing neurally exciting images
 
-This is the official implementation of the paper "Energy Guided Diffusion for Generating Neurally Exciting Images".
+This is the official implementation of the paper "Energy Guided Diffusion for Generating Neurally Exciting Images" accepted at NeurIPS 2023.
 
 <p align="center"><img src="./assets/teaser.png" width="100%" alt="EGG diffusion generated neurally exciting images" /></p>
 
 > [**Energy Guided Diffusion for Generating Neurally Exciting Images**](https://www.biorxiv.org/content/10.1101/2023.05.18.541176v1), \
 > Pawel A. Pierzchlewicz, Konstantin F. Willeke, Arne F. Nix, Pavithra Elumalai, Kelli Restivo, Tori Shinn, Cate Nealley, Gabrielle Rodriguez, Saumil Patel, Katrin Franke, Andreas S. Tolias, and Fabian H. Sinz
+>
+> [[NeurIPS]](https://neurips.cc/virtual/2023/poster/72996) [[bioRxiv]](https://www.biorxiv.org/content/10.1101/2023.05.18.541176v1)
 
 *This repository is based on the [guided-diffusion](https://github.com/openai/guided-diffusion) repository.*
 
@@ -29,9 +31,10 @@ pip install -e .
 To run EGG you need to download the pre-trained weights of the ADM model.
 The experiments use a model pretrained by OpenAI on 256x256 ImageNet images.
 
-| Model                   | Weights |
-|-------------------------| --- |
+| Model                   | Weights                                                                                                                  |
+|-------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | ImageNet 256x256 uncond | [256x256_diffusion_uncond.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt) |
+| Attention Readout + Data Driven Core | [HuggingFace](https://huggingface.co/sinzlab/attention-readout-monkey-v4)                                               |
 
 place the weights in the `models` folder.
 

@@ -1,6 +1,7 @@
+import os
+
 import torch
 import torch.nn as nn
-import os
 
 from egg.guided_diffusion.script_util import (
     create_model_and_diffusion,
@@ -50,15 +51,16 @@ class EGG(nn.Module):
             # download the model
             import requests
             from tqdm import tqdm
+
             url = "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt"
             destination = "./models/256x256_diffusion_uncond.pt"
 
             response = requests.get(url, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
+            total_size = int(response.headers.get("content-length", 0))
 
             print("Downloading the pretrained diffusion model")
-            with open(destination, 'wb') as file:
-                with tqdm(total=total_size, unit='B', unit_scale=True) as progress_bar:
+            with open(destination, "wb") as file:
+                with tqdm(total=total_size, unit="B", unit_scale=True) as progress_bar:
                     for data in response.iter_content(1024):
                         file.write(data)
                         progress_bar.update(len(data))
@@ -67,6 +69,11 @@ class EGG(nn.Module):
         self.model.requires_grad_(True).eval().to(device)
         if self.model_config["use_fp16"]:
             self.model.convert_to_fp16()
+
+        # get number of GPUs available, if more than 1, use DataParallel
+        num_gpus = torch.cuda.device_count()
+        if num_gpus > 1:
+            self.model = nn.DataParallel(self.model)
 
     def sample(
         self,

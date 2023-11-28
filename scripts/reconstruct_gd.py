@@ -99,10 +99,10 @@ from tqdm import tqdm
 from egg.models import models
 
 images = torch.Tensor(np.load("./data/75_monkey_test_imgs.npy"))
-target_l2 = torch.Tensor(np.load("./data/target_l2.npy"))
+target_l2 = torch.Tensor(np.load("./data/dd_recon_loss.npy"))
 image_idxs = np.arange(0, 75)
 
-model_type = "task_driven"  # 'task_driven' or 'v4_multihead_attention'
+model_type = "v4_multihead_attention"  # 'task_driven' or 'v4_multihead_attention'
 
 import time
 
@@ -143,14 +143,14 @@ if __name__ == "__main__":
     wandb.init(
         project="egg", entity="sinzlab", name=f"gd_reconstructions_{time.time()}"
     )
-    wandb.config.update(model_config)
+    # wandb.config.update(model_config)
     wandb.config.update(
         dict(
-            energy_scale=energy_scale,
-            norm_constraint=norm_constraint,
+            # energy_scale=energy_scale,
+            # norm_constraint=norm_constraint,
             model_type=model_type,
             image_idxs=image_idxs,
-            progressive=progressive,
+            # progressive=progressive,
         )
     )
 
@@ -186,7 +186,7 @@ if __name__ == "__main__":
         for i in pbar:
             image = image_gen()
             image = gaussian_blur(image)
-            image = image / torch.norm(image) * target_image.norm()  # 60
+            image = image / torch.norm(image) * 60# target_image.norm()  # 60
 
             res = models[model_type]["train"](
                 image, data_key="all_sessions", multiplex=False
@@ -218,7 +218,7 @@ if __name__ == "__main__":
         image = (image - image.min()) / (image.max() - image.min())
         image = (image * 255).astype(np.uint8)
         image = Image.fromarray(image)
-        image.save(f"./{model_type}_{norm_constraint}.png")
+        image.save(f"./{model_type}.png")
 
         wandb.log(
             {
@@ -227,6 +227,5 @@ if __name__ == "__main__":
                 "val": val_loss,
                 "cross-val": cross_loss,
                 "unit_idx": image_idx,
-                "seed": seed,
             }
         )
