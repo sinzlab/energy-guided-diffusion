@@ -44,6 +44,9 @@ Here is a minimal example for running the EGG diffusion on a pretrained model.
 ```python
 from functools import partial
 
+import torch
+
+
 from egg.models import models
 from egg.diffusion import EGG
 
@@ -53,19 +56,22 @@ num_samples = 1
 num_steps = 50
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def energy_fn(pred_x_0, unit_idx=0):
+def energy_fn(pred_x_0, unit_idx=0, contrast=50):
     """
     Energy function for optimizing MEIs, i.e. images that maximally excite a given unit.
 
     :param pred_x_0: the predicted "clean" image
     :param unit_idx: the index of the unit to optimize
-    :return: the neural of the predicted image for the given unit
+    :param contrast: the contrast of the image
+    :return: the predicted neural response of the predicted image for the given unit
     """
     x = F.interpolate(
         pred_x_0.clone(), size=(100, 100), mode="bilinear", align_corners=False
     ).mean(1, keepdim=True) # resize to 100x100 and convert to grayscale
     
-    return dict(train=models['task_driven']['train'](x)[..., unit_idx])
+    x = x / torch.norm(x) * contrast
+    
+    return dict(train=-models['task_driven']['train'](x)[..., unit_idx])
 
 
 diffusion = EGG(
